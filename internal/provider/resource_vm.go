@@ -130,12 +130,12 @@ func resourceVM() *schema.Resource {
 							Computed: true,
 						},
 
-					"mac_address": {
-						Type:        schema.TypeString,
-						Optional:    true,
-						Computed:    true,
-						Description: "MAC address for the network adapter. If not specified, VirtualBox will generate one automatically.",
-					},
+						"mac_address": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							Computed:    true,
+							Description: "MAC address for the network adapter. If not specified, VirtualBox will generate one automatically.",
+						},
 
 						"ipv4_address": {
 							Type:     schema.TypeString,
@@ -198,11 +198,11 @@ func resourceVMCreate(ctx context.Context, d *schema.ResourceData, meta any) dia
 	if !ok {
 		return diag.Errorf("invalid provider configuration")
 	}
-	
+
 	goldFolder := config.GoldFolder
 	machineFolder := config.MachineFolder
-	
-	err := os.MkdirAll(goldFolder, 0740)
+
+	err = os.MkdirAll(goldFolder, 0740)
 	if err != nil {
 		return diag.Errorf("unable to create gold folder: %v", err)
 	}
