@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -23,9 +24,28 @@ func init() {
 	log.SetPrefix(fmt.Sprintf("pid-%d-", os.Getpid()))
 }
 
+// ProviderConfig holds the provider configuration
+type ProviderConfig struct {
+	Manager       *virtualbox.Manager
+	MachineFolder string
+	GoldFolder    string
+}
+
 // New returns a resource provider for virtualbox.
 func New() *schema.Provider {
 	return &schema.Provider{
+		Schema: map[string]*schema.Schema{
+			"machine_folder": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "Path to the folder where VirtualBox machines will be stored. Defaults to ~/.terraform/virtualbox/machine",
+			},
+			"gold_folder": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "Path to the folder where gold images will be stored. Defaults to ~/.terraform/virtualbox/gold",
+			},
+		},
 		ResourcesMap: map[string]*schema.Resource{
 			"virtualbox_vm": resourceVM(),
 		},
@@ -35,6 +55,32 @@ func New() *schema.Provider {
 
 // configure creates a new instance of the new virtualbox manager which will be
 // used for communication with virtualbox.
-func configure(context.Context, *schema.ResourceData) (any, diag.Diagnostics) {
-	return virtualbox.NewManager(), nil
+func configure(ctx context.Context, d *schema.ResourceData) (any, diag.Diagnostics) {
+	manager := virtualbox.NewManager()
+	
+	// Get machine folder from config or use default
+	machineFolder := d.Get("machine_folder").(string)
+	if machineFolder == "" {
+		usr, err := os.UserHomeDir()
+		if err != nil {
+			return nil, diag.Errorf("unable to get the current user home directory: %v", err)
+		}
+		machineFolder = filepath.Join(usr, ".terraform/virtualbox/machine")
+	}
+	
+	// Get gold folder from config or use default
+	goldFolder := d.Get("gold_folder").(string)
+	if goldFolder == "" {
+		usr, err := os.UserHomeDir()
+		if err != nil {
+			return nil, diag.Errorf("unable to get the current user home directory: %v", err)
+		}
+		goldFolder = filepath.Join(usr, ".terraform/virtualbox/gold")
+	}
+	
+	return &ProviderConfig{
+		Manager:       manager,
+		MachineFolder: machineFolder,
+		GoldFolder:    goldFolder,
+	}, nil
 }

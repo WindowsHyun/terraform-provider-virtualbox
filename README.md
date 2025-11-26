@@ -23,11 +23,23 @@ terraform {
 }
 
 provider "virtualbox" {
-  # Configuration options
+  # Custom configuration options (added in this fork)
+  machine_folder = "/exthdd/terraform/machine"  # Optional: Path where VMs will be stored
+  gold_folder    = "/exthdd/terraform/gold"     # Optional: Path where gold images will be stored
 }
 
 resource "virtualbox_vm" "vm" {
-  // ...
+  name   = "example-vm"
+  image  = "ubuntu-2204.box"
+  cpus   = 2
+  memory = "2048mib"
+  
+  network_adapter {
+    type           = "bridged"
+    host_interface = "enp3s0"
+    device         = "IntelPro1000MTDesktop"
+    mac_address    = "080027F3971A"  # Optional: Fixed MAC address
+  }
 }
 ```
 
@@ -37,12 +49,70 @@ You can find a practical example in the [`/examples` directory](/examples)
 
 If you want to contribute documentation changes, see the [Contribution guide](CONTRIBUTING.md).
 
+## Custom Features (This Fork)
+
+This fork adds the following custom features to the original provider:
+
+### Provider Configuration Options
+
+- **`machine_folder`** (Optional): Specifies the path where VirtualBox machines will be stored.
+  - Default: `~/.terraform/virtualbox/machine`
+  - Allows Terraform VMs to be stored in a custom location without affecting other VirtualBox VMs
+
+- **`gold_folder`** (Optional): Specifies the path where gold images will be stored.
+  - Default: `~/.terraform/virtualbox/gold`
+  - Allows gold images to be stored in a custom location
+
+### Resource Configuration Options
+
+- **`mac_address`** (Optional): Fixed MAC address for network adapters.
+  - Format: 12-digit hexadecimal (e.g., `080027F3971A`)
+  - If not specified, VirtualBox will generate one automatically
+  - Useful for maintaining consistent network configurations
+
+### Example Usage
+
+```hcl
+terraform {
+  required_providers {
+    virtualbox = {
+      source  = "terra-farm/virtualbox"
+      version = "0.2.2-alpha.1"
+    }
+  }
+}
+
+provider "virtualbox" {
+  machine_folder = "/exthdd/terraform/machine"
+  gold_folder    = "/exthdd/terraform/gold"
+}
+
+resource "virtualbox_vm" "k3s_master" {
+  name   = "k3s-master-node"
+  image  = "ubuntu-2204.box"
+  cpus   = 4
+  memory = "4096mib"
+
+  network_adapter {
+    type           = "bridged"
+    host_interface = "enp3s0"
+    device         = "IntelPro1000MTDesktop"
+    mac_address    = "080027F3971A"  # Fixed MAC address
+  }
+}
+```
+
+### Building and Installation
+
+See [CUSTOM_BUILD.md](CUSTOM_BUILD.md) for detailed build and installation instructions.
+
 ## Limitations
 
 - __Experimental provider!__
 - We only officially support the latest version of Go, Virtualbox and Terraform. The provider might be compatible and work with other versions
   but we do not provide any level of support for this due to lack of time.
 - The defaults here are only tested with the [vagrant insecure (packer) keys](https://github.com/hashicorp/vagrant/tree/master/keys) as the login.
+- **Note on existing VMs**: Changing `machine_folder` or `gold_folder` settings does not automatically move existing VMs. Only newly created VMs will use the new paths. To move existing VMs, use `terraform destroy` and recreate them, or manually move the VM files.
 
 ## Contributors
 

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -131,10 +130,12 @@ func resourceVM() *schema.Resource {
 							Computed: true,
 						},
 
-						"mac_address": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
+					"mac_address": {
+						Type:        schema.TypeString,
+						Optional:    true,
+						Computed:    true,
+						Description: "MAC address for the network adapter. If not specified, VirtualBox will generate one automatically.",
+					},
 
 						"ipv4_address": {
 							Type:     schema.TypeString,
@@ -192,14 +193,16 @@ func resourceVMCreate(ctx context.Context, d *schema.ResourceData, meta any) dia
 		return diag.Errorf("unable to fetch remote image: %v", err)
 	}
 
-	/* Get gold folder and machine folder */
-	usr, err := user.Current()
-	if err != nil {
-		return diag.Errorf("unable to get the current user: %v", err)
+	/* Get gold folder and machine folder from provider config */
+	config, ok := meta.(*ProviderConfig)
+	if !ok {
+		return diag.Errorf("invalid provider configuration")
 	}
-	goldFolder := filepath.Join(usr.HomeDir, ".terraform/virtualbox/gold")
-	machineFolder := filepath.Join(usr.HomeDir, ".terraform/virtualbox/machine")
-	err = os.MkdirAll(goldFolder, 0740)
+	
+	goldFolder := config.GoldFolder
+	machineFolder := config.MachineFolder
+	
+	err := os.MkdirAll(goldFolder, 0740)
 	if err != nil {
 		return diag.Errorf("unable to create gold folder: %v", err)
 	}
@@ -612,6 +615,11 @@ func netTfToVbox(ctx context.Context, d *schema.ResourceData) ([]vbox.NIC, error
 			if !ok || adapter.HostInterface == "" {
 				err = fmt.Errorf("'host_interface' property not set for '#%d' network adapter", i)
 			}
+		}
+
+		/* MAC address is optional, if specified, use it */
+		if attr, ok := d.Get(prefix + "mac_address").(string); ok && attr != "" {
+			adapter.MacAddr = attr
 		}
 
 		if err != nil {
