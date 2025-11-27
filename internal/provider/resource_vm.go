@@ -463,7 +463,7 @@ func powerOnAndWait(ctx context.Context, d *schema.ResourceData, vm *vbox.Machin
 	}
 
 	if err := waitUntilVMIsReady(ctx, d, vm, meta); err != nil {
-		return fmt.Errorf("unabke to poer on and wait: %w", err)
+		return fmt.Errorf("unable to power on and wait: %w", err)
 	}
 
 	return nil
@@ -503,7 +503,7 @@ func resourceVMDelete(d *schema.ResourceData, meta any) error {
 		return fmt.Errorf("unable to get machine for deletion: %w", err)
 	}
 	if err := vm.Delete(); err != nil {
-		return fmt.Errorf("unabke to remove the VM: %w", err)
+		return fmt.Errorf("unable to remove the VM: %w", err)
 	}
 	return nil
 }
@@ -520,11 +520,11 @@ func waitUntilVMIsReady(ctx context.Context, d *schema.ResourceData, vm *vbox.Ma
 			ctx,
 			d,
 			[]string{"yes"},
-			[]string{"no"},
+			[]string{"no", ""},
 			key,
 			meta,
-			30*time.Second,
-			1*time.Second,
+			60*time.Second,
+			2*time.Second,
 		); err != nil {
 			return fmt.Errorf("waiting for VM (%s) to become ready: %w", d.Get("name"), err)
 		}
@@ -826,10 +826,10 @@ func waitForVMAttribute(ctx context.Context, d *schema.ResourceData, target []st
 		Pending:        pending,
 		Target:         target,
 		Refresh:        newVMStateRefreshFunc(ctx, d, attribute, meta),
-		Timeout:        5 * time.Minute,
+		Timeout:        10 * time.Minute, // Increased timeout for slower HDDs
 		Delay:          delay,
 		MinTimeout:     interval,
-		NotFoundChecks: 60,
+		NotFoundChecks: 120, // Increased checks for slower systems
 	}
 
 	return stateConf.WaitForStateContext(ctx)
@@ -837,21 +837,30 @@ func waitForVMAttribute(ctx context.Context, d *schema.ResourceData, target []st
 
 func newVMStateRefreshFunc(ctx context.Context, d *schema.ResourceData, attribute string, meta any) resource.StateRefreshFunc {
 	return func() (any, string, error) {
-		err := resourceVMRead(ctx, d, meta)
+		// First, try to get the VM directly to check if it exists
+		// This helps handle cases where VM is still booting and VirtualBox
+		// hasn't fully registered it yet (common with slower HDDs)
+		vm, err := vbox.GetMachine(d.Id())
 		if err != nil {
-			// TODO: How do we provide context easily without exploring the
-			//       diag.Diagnostics
-			return nil, "", fmt.Errorf("unable to read VM")
+			// If VM doesn't exist, that's a real error
+			if err == vbox.ErrMachineNotExist {
+				return nil, "", fmt.Errorf("VM does not exist: %w", err)
+			}
+			// Otherwise, it might be a temporary issue (VM still starting up)
+			// Return empty string to indicate we should retry (pending state)
+			return nil, "", nil
+		}
+
+		// Now try to read the full VM state
+		diags := resourceVMRead(ctx, d, meta)
+		if diags != nil && diags.HasError() {
+			// If VM exists but we can't read it, it might be still initializing
+			// Return empty string to retry (pending state) instead of failing immediately
+			return nil, "", nil
 		}
 
 		// See if we can access our attribute
 		if attr, ok := d.GetOk(attribute); ok {
-			// Retrieve the VM properties
-			vm, err := vbox.GetMachine(d.Id())
-			if err != nil {
-				return nil, "", fmt.Errorf("unable to retrive vm: %w", err)
-			}
-
 			return &vm, attr.(string), nil
 		}
 
